@@ -21,6 +21,8 @@ async function setupAudioDevice(ctx, deviceName) {
   throw Error("Audio Device \"" + deviceName + "\" not found");
 }
 
+// Note that this function needs to be called AFTER the user has interacted
+// with the page, so it should be triggered from a button or something.
 async function initAudio(deviceName) {
   // need to get permissions if we haven't already, to access all the devices
   await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -37,27 +39,34 @@ async function getDeviceNames() {
   return devs.filter(d => d.kind == "audiooutput").map(d => d.label);
 }
 
+function coords_to_string(coords) { return "(" + coords.x + ", " + coords.y + ")" }
+
 function createVoice(url, listenerCoords, voiceCoords) {
-  const elem = new Audio(url);
-  const elemNode = new MediaElementAudioSourceNode();
-  const panner = createPanner(audioCtx.destination);
-  elemNode.connect(panner);
-  function updatePan() {
-    panner.pan = panFromCoords(this.listenerCoords, this._voiceCoords);
-  }
+  console.log("New voice at " + url)
+  console.log("listener coords: " + coords_to_string(listenerCoords))
+  console.log("voice coords: " + coords_to_string(voiceCoords))
+  const mediaElement = new Audio(url);
+  // if we want to load audio from a different host (e.g. running the site from
+  // localhost and pulling from LVN), then we need to use CORS, which isn't used
+  // unless we set this property
+  mediaElement.crossOrigin = "anonymous";
+  const elemNode = new MediaElementAudioSourceNode(audioCtx, {mediaElement});
+  const panner = createPanner(audioCtx, audioCtx.destination);
+  panner.pan = panFromCoords(listenerCoords, voiceCoords);
+  // TODO: set gain based on distance
+  elemNode.connect(panner.node);
   return {
     set listenerCoords(xy) {
       this._listenerCoords = xy;
-      updatePan();
+      this._panner.pan = panFromCoords(this._listenerCoords, this._voiceCoords);
     },
     set voiceCoords(xy) {
       this._voiceCoords = xy;
-      updatePan();
+      this._panner.pan = panFromCoords(this._listenerCoords, this._voiceCoords);
     },
-    // TODO: not sure yet what the play/pause API should be.
-    pause: () => elem.pause(),
-    play: () => elem.play(),
-    _elem: elem,
+    pause: () => mediaElement.pause(),
+    play: () => mediaElement.play(),
+    _elem: mediaElement,
     _elemNode: elemNode,
     _panner: panner,
     _listenerCoords: listenerCoords,
@@ -66,14 +75,20 @@ function createVoice(url, listenerCoords, voiceCoords) {
 }
 
 function panFromCoords(listenerCoords, voiceCoords) {
+  // coordinates have (0,0) at the top-left and increase down and right
   // TODO
   return 0;
+}
+
+function gainFromCoords(listenerCoords, voiceCoords, listenRadius) {
+  // TODO
+  return 1;
 }
 
 /* 
  * Build a multichannel surround panner.
  */
-function createPanner(destNode) {
+function createPanner(ctx, destNode) {
   const nChans = destNode.channelCount;
   const merger = new ChannelMergerNode(ctx, {numberOfInputs: nChans});
   merger.connect(ctx.destination);
@@ -84,9 +99,9 @@ function createPanner(destNode) {
   // signals, but not for now
   const fanout = new GainNode(ctx, {gain: 1, channelCount: 1, channelCountMode: "explicit"});
   // create 1 gain node for each channel
-  channelGains = []
-  for(i = 0; i < nChans; ++i) {
-  	g = new GainNode(ctx, {gain: 0});
+  const channelGains = []
+  for(let i = 0; i < nChans; ++i) {
+  	const g = new GainNode(ctx, {gain: 0});
     /////////
     // TEMPORARY - set gain to pass-through until we can actually pan
     g.gain.value = 1;
