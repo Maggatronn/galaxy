@@ -73,7 +73,7 @@ function createVoice(url, listenerCoords, voiceCoords) {
   }
 }
 
-// modulo (always has the same sign as `x`)
+// modulo (always has the same sign as `d`)
 function mod(n, d) { return ((n % d) + d) % d }
 
 // this arcane incantation creates an array from 0 to N-1
