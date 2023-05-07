@@ -1,4 +1,4 @@
-export { initAudio, getDeviceNames, createVoice };
+export { initAudio, getDeviceNames, createVoice, gainsFromPan };
 
 var audioCtx = null;
 
@@ -75,9 +75,66 @@ function createVoice(url, listenerCoords, voiceCoords) {
 }
 
 function panFromCoords(listenerCoords, voiceCoords) {
-  // coordinates have (0,0) at the top-left and increase down and right
-  // TODO
+  /*
+   * coordinates have (0,0) at the top-left and increase down and right.
+   * This implies that positive angles should go clockwise (left-handed).
+   * We'll set 0deg to the +x axis, so straight forward is 90deg
+   */
   return 0;
+}
+
+// modulo (always has the same sign as `x`)
+function mod(n, d) { return ((n % d) + d) % d }
+
+// this arcane incantation creates an array from 0 to N-1
+function zeroTo(N) { return Array.from({length: N}, (_, i) => i) };
+
+// return the indices of the minimum and maximum values
+function argExtrema(a) {
+  let maxIdx = null;
+  let minIdx = null;
+  for(let i = 0; i < a.length; ++i) {
+    if(maxIdx === null || a[i] > a[maxIdx]) maxIdx = i;
+    if(minIdx === null || a[i] < a[minIdx]) minIdx = i;
+  }
+  return {minIdx, maxIdx};
+}
+
+// get the gain based on a linear (equal-amplitude) pan law
+// given the normalized distance from the speaker to the source (i.e. 
+// normDist == 1 means the source is at the other speaker of the pair)
+function equalAmpPan(normDist) { return 1-normDist }
+function equalPowPan(normDist) { return Math.cos(normDist * Math.PI/2) }
+
+function gainsFromPan(theta) {
+  // We'll hard-code the speaker locations for now, in a standard 5.1 layout,
+  // in degrees, listed in channel order
+  const spkTheta = [
+    -90 - 30,  // L
+    -90 + 30,  // R
+    -90,       // C
+    null,      // LFE
+    -90 - 115, // Ls
+    -90 + 115] // Rs
+
+    // first we rotate all the speaker to be relative to the given direction,
+    // with all angles wrapped to [0, 360)
+    const spkThetaRel = spkTheta.map(t => mod(t - theta, 360));
+    // because the target vector is at 0, the first speaker to the right has the
+    // minimum angle, and the first speaker to the left has the maximum angle
+    const {minIdx: rSpk, maxIdx: lSpk} = argExtrema(spkThetaRel);
+    // get the distance (in degrees) between the L and R speakers of the pair
+    const spkDist = mod(spkThetaRel[rSpk] - spkThetaRel[lSpk], 360);
+    if(spkDist > 180) {
+      throw Error("Source is outside the speaker pair");
+    }
+    return spkThetaRel.map((t, i) => {
+      // if we're one of the two speaker of the pair, compute the pan gain
+      if(i == lSpk) return equalPowPan((360-t) / spkDist);
+      if(i == rSpk) return equalPowPan(t / spkDist);
+      // otherwise the gain is 0
+      return 0.0;
+    })
 }
 
 function gainFromCoords(listenerCoords, voiceCoords, listenRadius) {
