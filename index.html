@@ -48,7 +48,21 @@ svg {
   src="https://code.jquery.com/jquery-3.2.1.min.js"
   integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4="
   crossorigin="anonymous"></script>
-<script>
+<script type="module">
+
+import {initAudio, getDeviceNames, createVoice} from "./spatialize.js";
+
+await getDeviceNames().then(devs => {
+  console.log("Available audio devices are:")
+  devs.map(d=>{console.log("  - " + d)});
+});
+
+// initialize audio with your desired output device, from the list in
+// `getDeviceNames` (which is printed to the console when this app loads)
+await initAudio("MacBook Air Speakers (Built-in)");
+// await initAudio("Dolby Audio Bridge (Virtual)");
+// await initAudio("FancyFones (Bluetooth)");
+
 var graph, store, audio;
 
 var width = $(window).width();
@@ -148,13 +162,17 @@ var radius_highlight = d3.scaleLinear().domain([0,24]).range([1,5])
 
 d3.json("rtfc_master_bi.json", function(error, graph) {
   if (error) throw error;
+  // for development, trim down the number of nodes so things move faster
+  graph.nodes = graph.nodes.slice(0,100);
+  const graph_ids = graph.nodes.map(n=>n.id)
+  graph.edges = graph.edges.filter(e=>(graph_ids.includes(e.source) && graph_ids.includes(e.target)));
 
   graph.nodes.forEach(function(n) {
   		nodeByID[n.id] = n;
   	});
 
-  typeFilterListLinks = []
-  typeFilterListNodes =[]
+  const typeFilterListLinks = []
+  const typeFilterListNodes =[]
 
   for (let i = 0; i < Object.keys(topics_dict).length; i++){
     for (let x = 0; x < topics_dict[Object.keys(topics_dict)[i]].length; x++){
@@ -167,7 +185,7 @@ d3.json("rtfc_master_bi.json", function(error, graph) {
     }
   }
 
-  nodesToLookAt = []
+  const nodesToLookAt = []
 	graphNodes = graph.nodes.filter(function(d) {
           d.focus = false;
           return d
@@ -178,7 +196,6 @@ d3.json("rtfc_master_bi.json", function(error, graph) {
   });
 
 
-  graphed = graph;
 	store = $.extend(true, {}, graph);
 
 
@@ -197,28 +214,29 @@ d3.json("rtfc_master_bi.json", function(error, graph) {
          .style("padding", "10x")
          .html(graph.node)
 
-      svg.append("svg:rect")
-          .attr("width", width)
-          .attr("height", height)
-          .on("click", function(d) {
-            if (audio) {
-              audio.pause()
-              console.log('pause')
-            }
-            line_list = []
-            d3.select(".nodes")
-              .transition()
-              .duration(500)
-              .data(graphNodes)
-              .selectAll("text")
-              .style("opacity", function(o){
-                if (o.group == 2){
-                  return 0.4
-                } if (o.group == 3){
-                  return 0.8
-                }
-              })
-            });
+      // doesn't seem to be used?
+      // svg.append("svg:rect")
+      //     .attr("width", width)
+      //     .attr("height", height)
+      //     .on("click", function(d) {
+      //       if (audio) {
+      //         audio.pause()
+      //         console.log('pause')
+      //       }
+      //       line_list = []
+      //       d3.select(".nodes")
+      //         .transition()
+      //         .duration(500)
+      //         .data(graphNodes)
+      //         .selectAll("text")
+      //         .style("opacity", function(o){
+      //           if (o.group == 2){
+      //             return 0.4
+      //           } if (o.group == 3){
+      //             return 0.8
+      //           }
+      //         })
+      //       });
 
 
       link = svg.append("g")
@@ -289,9 +307,29 @@ d3.json("rtfc_master_bi.json", function(error, graph) {
                 audio.pause()
                 console.log('pause')
               }
-              var url = "https://app.lvn.org/api/highlights/play/" + String(d.highlight)
-              audio = new Audio(url);
-              playPromise = audio.play();
+              const lvn_host = "http://localhost:8010";
+              // const lvn_host = "https://app.lvn.org";
+              const lvn_path = "/api/highlights/play/"
+              // install a local proxy to get around CORS restrictions. The
+              // virtualenv stuff below is to set up an isolated python environment
+              // rather than installing packages globally.
+              // ================
+              // pip3 install virtualenv
+              // virtualenv venv
+              // . venv/bin/activate # notice the space after the '.'
+              // git clone https://github.com/ssfrr/corsproxy.git
+              // pip install -r corsproxy/requirements.txt
+              // # override urllib version because the latest 2.x throws SSL-related errors
+              // pip install urllib3==1.26.15
+              // # now run the proxy:
+              // ./corsproxy/corsproxy 8010:https://app.lvn.org
+              // ================
+              const url = lvn_host + lvn_path + String(d.highlight);
+              // for now just stick the listener somewhere in the middle
+              audio = createVoice(url, {x: 600, y: 200}, {x: d.x, y: d.y});
+              audio.play();
+              // as the listener moves, update the position with:
+              // audio.listenerCoords = {x: newx, y: newy};
               console.log('play')
             }
 
