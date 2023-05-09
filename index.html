@@ -328,7 +328,10 @@ d3.json("rtfc_master_bi.json", function(error, graph) {
               // ================
               const url = lvn_host + lvn_path + String(d.highlight);
               // for now just stick the listener somewhere in the middle
-              audio = createVoice(url, {x: 700, y: 300}, {x: d.x, y: d.y});
+              audio = createVoice(url,
+                {x: 700, y: 300}, // listener position
+                {x: d.x, y: d.y}, // voice position
+                25); // listenRadius (the distance where the volume starts to roll off)
               audio.play();
               // as the listener moves, update the position with:
               // audio.listenerCoords = {x: newx, y: newy};

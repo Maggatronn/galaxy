@@ -51,7 +51,7 @@ async function getDeviceNames() {
 
 function coords_to_string(coords) { return "(" + coords.x + ", " + coords.y + ")" }
 
-function createVoice(url, listenerCoords, voiceCoords) {
+function createVoice(url, listenerCoords, voiceCoords, listenRadius) {
   console.log("New voice at " + url)
   console.log("listener coords: " + coords_to_string(listenerCoords))
   console.log("voice coords: " + coords_to_string(voiceCoords))
@@ -62,25 +62,31 @@ function createVoice(url, listenerCoords, voiceCoords) {
   mediaElement.crossOrigin = "anonymous";
   const elemNode = new MediaElementAudioSourceNode(audioCtx, {mediaElement});
   const panner = createPanner(audioCtx, audioCtx.destination);
-  panner.pan = panFromCoords(listenerCoords, voiceCoords);
   elemNode.connect(panner.input);
-  return {
+  const ret = {
     set listenerCoords(xy) {
       this._listenerCoords = xy;
-      this._panner.pan = panFromCoords(this._listenerCoords, this._voiceCoords);
+      this._updatePanner();
     },
     set voiceCoords(xy) {
       this._voiceCoords = xy;
-      this._panner.pan = panFromCoords(this._listenerCoords, this._voiceCoords);
+      this._updatePanner();
     },
     pause: () => mediaElement.pause(),
     play: () => mediaElement.play(),
+    _updatePanner: function() {
+      this._panner.pan = panFromCoords(this._listenerCoords, this._voiceCoords);
+      this._panner.gain = gainFromCoords(this._listenerCoords, this._voiceCoords, this._listenRadius);
+    },
     _elem: mediaElement,
     _elemNode: elemNode,
     _panner: panner,
+    _listenRadius: listenRadius,
     _listenerCoords: listenerCoords,
     _voiceCoords: voiceCoords
   }
+  ret._updatePanner();
+  return ret
 }
 
 // modulo (always has the same sign as `d`)
@@ -145,6 +151,20 @@ function panFromCoords(listenerCoords, voiceCoords) {
       voiceCoords.x - listenerCoords.x) / Math.PI * 180;
 }
 
+function gainFromCoords(listenerCoords, voiceCoords, listenRadius) {
+  const dist = Math.sqrt(
+    (voiceCoords.x - listenerCoords.x) ** 2 +
+    (voiceCoords.y - listenerCoords.y) ** 2);
+  let gain;
+  if(dist < listenRadius) {
+    gain = 1;
+  } else {
+    gain = listenRadius / dist;
+  }
+  console.log("distance: " + dist + ", gain: " + gain);
+  return gain;
+}
+
 // assume a standard speaker layout given the channel count
 function spkLayoutFromNChans(nChans) {
   if(nChans == 6) {
@@ -203,6 +223,8 @@ function createPanner(ctx, destNode) {
     merger,
     channelGains: channelGainNodes,
     // set the pan, where 0deg is to the right, so -90deg is straight ahead
-    set pan(p) { setPan(p); }
+    set pan(p) { setPan(p); },
+    // set the overall gain
+    set gain(g) { fanout.gain.value = g; }
   }
 }
