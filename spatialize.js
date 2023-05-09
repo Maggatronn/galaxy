@@ -211,7 +211,7 @@ function createPanner(ctx, destNode) {
   let spkTheta = spkLayoutFromNChans(nChans);
   const setPan = p => {
     gainsFromPan(p, spkTheta).map((gain, i) => {
-      channelGainNodes[i].gain.value = gain;
+      channelGainNodes[i].gain.setTargetAtTime(gain, ctx.currentTime, 0.1);
     });
     console.log("gains: " + gainsFromPan(p, spkTheta));
   }
@@ -226,6 +226,6 @@ function createPanner(ctx, destNode) {
     // set the pan, where 0deg is to the right, so -90deg is straight ahead
     set pan(p) { setPan(p); },
     // set the overall gain
-    set gain(g) { fanout.gain.value = g; }
+    set gain(g) { fanout.gain.setTargetAtTime(g, ctx.currentTime, 0.1); }
   }
 }
