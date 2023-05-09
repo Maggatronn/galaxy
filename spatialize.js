@@ -2,19 +2,29 @@ export { initAudio, getDeviceNames, createVoice, gainsFromPan };
 
 var audioCtx = null;
 
+function setDeviceChannels(ctx) {
+  // set output to 6 channels if possible, for 5.1
+  // as of 2023.05.02, chrome and firefox don't seem to work with more
+  // than 6 channels, but safari works. Probably not too terrible if the
+  // top channels don't work for this, and it simplifies the panning
+  // as of 2023.05.09 it seems that chrome gets unhappy if you try to set
+  // ctx.destination.channelCount to less than the max
+  ctx.destination.channelCount = ctx.destination.maxChannelCount;
+  ctx.destination.channelInterpretation = "discrete";
+}
+
 async function setupAudioDevice(ctx, deviceName) {
   const devs = await navigator.mediaDevices.enumerateDevices();
+  if(deviceName == "default") {
+    console.log("Using default audio device");
+    setDeviceChannels(ctx);
+    return
+  }
   for (const d of devs) {
     if (d.kind == "audiooutput" && d.label == deviceName) {
       await ctx.setSinkId(d.deviceId);
       console.log("Audio device set to \"" + deviceName + "\"")
-      // set output to 6 channels if possible, for 5.1
-      // as of 2023.05.02, chrome and firefox don't seem to work with more
-      // than 6 channels, but safari works. Probably not too terrible if the
-      // top channels don't work for this, and it simplifies the panning
-      const nChans = Math.min(ctx.destination.maxChannelCount, 6);
-      ctx.destination.channelCount = nChans;
-      console.log("Using " + nChans + " of " + ctx.destination.maxChannelCount + " available channels")
+      setDeviceChannels(ctx);
       return;
     }
   }
@@ -158,9 +168,11 @@ function spkLayoutFromNChans(nChans) {
  * Build a multichannel surround panner.
  */
 function createPanner(ctx, destNode) {
-  const nChans = destNode.channelCount;
-  const merger = new ChannelMergerNode(ctx, {numberOfInputs: nChans});
-  merger.connect(ctx.destination);
+  const merger = new ChannelMergerNode(ctx, {numberOfInputs: destNode.channelCount,
+                                             channelInterpretation: "discrete"});
+  merger.connect(destNode);
+  const nChans = Math.min(destNode.channelCount, 6);
+  console.log("Creaeting panner with " + nChans + " channels")
   // the fanout node is responsible for sending its input to all the separate
   // per-channel gain nodes. We force it to be mono so that any inputs will get
   // downmixed before we fan-out to the output channels. If we wanted to be

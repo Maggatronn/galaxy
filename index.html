@@ -59,9 +59,11 @@ await getDeviceNames().then(devs => {
 
 // initialize audio with your desired output device, from the list in
 // `getDeviceNames` (which is printed to the console when this app loads)
-await initAudio("MacBook Air Speakers (Built-in)");
+// await initAudio("MacBook Air Speakers (Built-in)");
 // await initAudio("Dolby Audio Bridge (Virtual)");
 // await initAudio("FancyFones (Bluetooth)");
+// await initAudio("UltraLite-mk5");
+await initAudio("default");
 
 var graph, store, audio;
 
@@ -326,7 +328,7 @@ d3.json("rtfc_master_bi.json", function(error, graph) {
               // ================
               const url = lvn_host + lvn_path + String(d.highlight);
               // for now just stick the listener somewhere in the middle
-              audio = createVoice(url, {x: 600, y: 200}, {x: d.x, y: d.y});
+              audio = createVoice(url, {x: 700, y: 300}, {x: d.x, y: d.y});
               audio.play();
               // as the listener moves, update the position with:
               // audio.listenerCoords = {x: newx, y: newy};
