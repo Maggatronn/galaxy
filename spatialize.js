@@ -72,13 +72,23 @@ function createVoice(url, listenerCoords, voiceCoords, listenRadius) {
       this._voiceCoords = xy;
       this._updatePanner();
     },
-    pause: () => mediaElement.pause(),
+    set volume(v) {
+      this._volume = v;
+      this._updatePanner();
+    },
+    pause: function() {
+      this._volume = 0;
+      this._updatePanner();
+      // pause in 5 seconds, which should be enough time for a fadeout
+      setTimeout(()=>mediaElement.pause(), 5000)
+    },
     play: () => mediaElement.play(),
     _updatePanner: function() {
       this._panner.pan = panFromCoords(this._listenerCoords, this._voiceCoords);
-      this._panner.gain = gainFromCoords(this._listenerCoords, this._voiceCoords, this._listenRadius);
+      this._panner.gain = this._volume * gainFromCoords(this._listenerCoords, this._voiceCoords, this._listenRadius);
     },
     url,
+    _volume: 1,
     _elem: mediaElement,
     _elemNode: elemNode,
     _panner: panner,
@@ -211,7 +221,7 @@ function createPanner(ctx, destNode) {
   let spkTheta = spkLayoutFromNChans(nChans);
   const setPan = p => {
     gainsFromPan(p, spkTheta).map((gain, i) => {
-      channelGainNodes[i].gain.value = gain;
+      channelGainNodes[i].gain.setTargetAtTime(gain, ctx.currentTime, 0.1);
     });
     console.log("gains: " + gainsFromPan(p, spkTheta));
   }
@@ -225,7 +235,7 @@ function createPanner(ctx, destNode) {
     channelGains: channelGainNodes,
     // set the pan, where 0deg is to the right, so -90deg is straight ahead
     set pan(p) { setPan(p); },
-    // set the overall gain
-    set gain(g) { fanout.gain.value = g; }
+    // set the overall gain, with a fade
+    set gain(g) { fanout.gain.setTargetAtTime(g, ctx.currentTime, 1); }
   }
 }
