@@ -78,6 +78,7 @@ function createVoice(url, listenerCoords, voiceCoords, listenRadius) {
       this._panner.pan = panFromCoords(this._listenerCoords, this._voiceCoords);
       this._panner.gain = gainFromCoords(this._listenerCoords, this._voiceCoords, this._listenRadius);
     },
+    url,
     _elem: mediaElement,
     _elemNode: elemNode,
     _panner: panner,
