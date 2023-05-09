@@ -2,19 +2,29 @@ export { initAudio, getDeviceNames, createVoice, gainsFromPan };
 
 var audioCtx = null;
 
+function setDeviceChannels(ctx) {
+  // set output to 6 channels if possible, for 5.1
+  // as of 2023.05.02, chrome and firefox don't seem to work with more
+  // than 6 channels, but safari works. Probably not too terrible if the
+  // top channels don't work for this, and it simplifies the panning
+  // as of 2023.05.09 it seems that chrome gets unhappy if you try to set
+  // ctx.destination.channelCount to less than the max
+  ctx.destination.channelCount = ctx.destination.maxChannelCount;
+  ctx.destination.channelInterpretation = "discrete";
+}
+
 async function setupAudioDevice(ctx, deviceName) {
   const devs = await navigator.mediaDevices.enumerateDevices();
+  if(deviceName == "default") {
+    console.log("Using default audio device");
+    setDeviceChannels(ctx);
+    return
+  }
   for (const d of devs) {
     if (d.kind == "audiooutput" && d.label == deviceName) {
       await ctx.setSinkId(d.deviceId);
       console.log("Audio device set to \"" + deviceName + "\"")
-      // set output to 6 channels if possible, for 5.1
-      // as of 2023.05.02, chrome and firefox don't seem to work with more
-      // than 6 channels, but safari works. Probably not too terrible if the
-      // top channels don't work for this, and it simplifies the panning
-      const nChans = Math.min(ctx.destination.maxChannelCount, 6);
-      ctx.destination.channelCount = nChans;
-      console.log("Using " + nChans + " of " + ctx.destination.maxChannelCount + " available channels")
+      setDeviceChannels(ctx);
       return;
     }
   }
@@ -41,7 +51,7 @@ async function getDeviceNames() {
 
 function coords_to_string(coords) { return "(" + coords.x + ", " + coords.y + ")" }
 
-function createVoice(url, listenerCoords, voiceCoords) {
+function createVoice(url, listenerCoords, voiceCoords, listenRadius) {
   console.log("New voice at " + url)
   console.log("listener coords: " + coords_to_string(listenerCoords))
   console.log("voice coords: " + coords_to_string(voiceCoords))
@@ -52,25 +62,32 @@ function createVoice(url, listenerCoords, voiceCoords) {
   mediaElement.crossOrigin = "anonymous";
   const elemNode = new MediaElementAudioSourceNode(audioCtx, {mediaElement});
   const panner = createPanner(audioCtx, audioCtx.destination);
-  panner.pan = panFromCoords(listenerCoords, voiceCoords);
   elemNode.connect(panner.input);
-  return {
+  const ret = {
     set listenerCoords(xy) {
       this._listenerCoords = xy;
-      this._panner.pan = panFromCoords(this._listenerCoords, this._voiceCoords);
+      this._updatePanner();
     },
     set voiceCoords(xy) {
       this._voiceCoords = xy;
-      this._panner.pan = panFromCoords(this._listenerCoords, this._voiceCoords);
+      this._updatePanner();
     },
     pause: () => mediaElement.pause(),
     play: () => mediaElement.play(),
+    _updatePanner: function() {
+      this._panner.pan = panFromCoords(this._listenerCoords, this._voiceCoords);
+      this._panner.gain = gainFromCoords(this._listenerCoords, this._voiceCoords, this._listenRadius);
+    },
+    url,
     _elem: mediaElement,
     _elemNode: elemNode,
     _panner: panner,
+    _listenRadius: listenRadius,
     _listenerCoords: listenerCoords,
     _voiceCoords: voiceCoords
   }
+  ret._updatePanner();
+  return ret
 }
 
 // modulo (always has the same sign as `d`)
@@ -135,6 +152,20 @@ function panFromCoords(listenerCoords, voiceCoords) {
       voiceCoords.x - listenerCoords.x) / Math.PI * 180;
 }
 
+function gainFromCoords(listenerCoords, voiceCoords, listenRadius) {
+  const dist = Math.sqrt(
+    (voiceCoords.x - listenerCoords.x) ** 2 +
+    (voiceCoords.y - listenerCoords.y) ** 2);
+  let gain;
+  if(dist < listenRadius) {
+    gain = 1;
+  } else {
+    gain = listenRadius / dist;
+  }
+  console.log("distance: " + dist + ", gain: " + gain);
+  return gain;
+}
+
 // assume a standard speaker layout given the channel count
 function spkLayoutFromNChans(nChans) {
   if(nChans == 6) {
@@ -158,9 +189,11 @@ function spkLayoutFromNChans(nChans) {
  * Build a multichannel surround panner.
  */
 function createPanner(ctx, destNode) {
-  const nChans = destNode.channelCount;
-  const merger = new ChannelMergerNode(ctx, {numberOfInputs: nChans});
-  merger.connect(ctx.destination);
+  const merger = new ChannelMergerNode(ctx, {numberOfInputs: destNode.channelCount,
+                                             channelInterpretation: "discrete"});
+  merger.connect(destNode);
+  const nChans = Math.min(destNode.channelCount, 6);
+  console.log("Creaeting panner with " + nChans + " channels")
   // the fanout node is responsible for sending its input to all the separate
   // per-channel gain nodes. We force it to be mono so that any inputs will get
   // downmixed before we fan-out to the output channels. If we wanted to be
@@ -191,6 +224,8 @@ function createPanner(ctx, destNode) {
     merger,
     channelGains: channelGainNodes,
     // set the pan, where 0deg is to the right, so -90deg is straight ahead
-    set pan(p) { setPan(p); }
+    set pan(p) { setPan(p); },
+    // set the overall gain
+    set gain(g) { fanout.gain.value = g; }
   }
 }
